@@ -1,0 +1,301 @@
+---
+title: "Final"
+output: html_document
+date: "2024-12-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(readxl)
+library(forecast)
+library(tseries)
+library(TTR)
+library(ggplot2)
+library(tidyr)
+```
+```{r}
+sales_data <- read.csv("/Users/kiannazem/Downloads/TOTALSA.csv")
+
+sales_data$Date <- as.Date(sales_data$Date, format = "%m/%d/%Y")
+
+sales_ts <- ts(sales_data$Sales.Units.in.Millions., start = c(2019, 1), frequency = 12)
+
+print(head(sales_data))
+```
+
+```{r}
+plot(sales_ts, main = "Time Series Plot of Sales", xlab = "Time", ylab = "Sales", type = "o")
+
+summary_stats <- summary(sales_ts)
+print(summary_stats)
+
+boxplot(sales_ts, main = "Boxplot of Sales", ylab = "Sales")
+```
+The time series plot shows an overall trend with fluctuations over time, beginning with relatively stable sales levels from 2019 through early 2020, followed by a sharp decline around early 2020, likely due to external factors such as the COVID-19 pandemic. After this drop, there is a noticeable recovery through late 2020 and 2021, with sales gradually returning to pre-2020 levels. Starting in 2022, the series becomes more stable, with a clear upward trend and smaller fluctuations, suggesting a consistent seasonal pattern emerging. This stability, particularly in the post-2022 data, makes it well-suited for forecasting, as it reflects the current dynamics of the series without the disruptions seen in earlier years. While seasonality is present, it is not overly pronounced but becomes more evident in recent years, especially in the upward movement observed toward the end of 2023. 
+
+The summary statistics and box plot for the full dataset show that the minimum sales value is 8.944 million, which corresponds to the sharp drop observed in 2020, likely due to external disruptions such as the COVID-19 pandemic. The maximum value is 18.697 million, reflecting peak sales performance during the recovery period. The mean sales value is 15.612 million, slightly lower than the median of 15.938 million, indicating a near-symmetric distribution with a slight left skew. Q1 is 14.189 million, and Q3 is 16.966 million, resulting in an IQR of approximately 2.777 million, showing that the data is relatively tightly clustered around the central values. The box plot highlights a single outlier below the lower whisker, corresponding to the sharp decline during 2020, while the majority of the sales values fall between Q1 and Q3. These insights suggest that while the data exhibits stability overall, the sharp decline during 2020 creates a notable deviation that may justify evaluating whether excluding earlier data could improve the forecasting models. Due to this, it would be appropriate to cut out all data prior to 2022.
+```{r}
+sales_data <- subset(sales_data, Date >= as.Date("2022-01-01"))
+
+sales_ts <- ts(sales_data$Sales.Units.in.Millions., start = c(2022, 1), frequency = 12)
+
+print(head(sales_data))
+
+plot(sales_ts, main = "Time Series Plot of Sales", xlab = "Time", ylab = "Sales", type = "o")
+
+summary_stats <- summary(sales_ts)
+print("Summary Statistics:")
+print(summary_stats)
+
+boxplot(sales_ts, main = "Boxplot of Sales", ylab = "Sales")
+```
+```{r}
+decomposition <- decompose(sales_ts)
+print(decomposition$type)
+```
+
+```{r}
+decomp <- decompose(sales_ts)
+plot(decomp)
+
+seasonal_indices <- decomp$seasonal
+print(seasonal_indices)
+
+adjusted_ts <- sales_ts - decomp$seasonal
+plot(adjusted_ts, main = "Seasonally Adjusted Time Series", type = "o", col = "red")
+lines(sales_ts, col = "blue", lty = 2)
+legend("topright", legend = c("Adjusted", "Actual"), col = c("red", "blue"), lty = c(1, 2))
+```
+This decompostion is additive. The time series is also seasonal, as indicated by the decomposition and the monthly indices, which exhibit consistent periodic fluctuations. Based on the indices, the highest seasonal values occur in April (0.697) and June (0.446), suggesting that sales are typically stronger during these months, possibly due to increased demand tied to seasonal factors such as product usage trends in spring and early summer. Conversely, the lowest seasonal value is in December (-1.142), indicating a significant drop in sales during this time, which could be attributed to the end-of-year slowdown or competing consumer priorities such as holiday-related spending. The indices also show moderate dips in July (-0.123) and August (-0.276), suggesting a seasonal decrease during late summer. These patterns demonstrate a clear and recurring seasonal component, which should be accounted for in forecasting models to improve accuracy. 
+
+However, Seasonality does not appear to have large fluctuations in the value of the time series. In the seasonally adjusted plot, the red line representing the adjusted series is much smoother compared to the actual series which is the blue dashed line.
+```{r}
+naive_model <- naive(sales_ts, h=12)
+plot(naive_model, main = "Naive Forecast")
+print(naive_model)
+residuals_naive <- residuals(naive_model)
+plot(residuals_naive, main = "Residuals", type = "o")
+hist(residuals_naive, main = "Histogram of Residuals")
+plot(fitted(naive_model), residuals_naive, main = "Fitted Values vs Residuals", xlab = "Fitted", ylab = "Residuals")
+residuals_naive <- residuals_naive[!is.na(residuals_naive)]
+acf(residuals_naive)
+
+accuracy_naive <- accuracy(naive_model)
+print(accuracy_naive)
+```
+The residuals plot shows the variation between the actual and predicted values over time, and the residuals appear to fluctuate randomly around zero without any obvious pattern. This indicates that the Naive model does not leave significant trends or seasonality in the residuals, which is a good sign. However, some spikes suggest occasional overestimation or underestimation. The histogram of the residuals suggests that the residuals are approximately normally distributed, as the frequencies peak around zero and taper off symmetrically, though there is some skewness at the tails, indicating minor deviations from normality.
+
+The plot of fitted values versus residuals shows that the residuals are scattered without any systematic pattern, which is desirable, as it confirms that the Naive model does not suffer from issues like heteroscedasticity or model misfit. Similarly, the plot of actual values versus residuals also displays random scattering, indicating that the residuals are not correlated with the actual values and confirming the model's adequacy in capturing the central tendency of the data. Lastly, the ACF plot of residuals indicates that while most lags fall within the confidence bounds, there are a few significant spikes, particularly at lag 1, suggesting minor autocorrelation. This implies that while the Naive model is relatively effective, there may still be room for improvement in capturing the full dynamics of the time series.
+
+The accuracy of the naive model, based solely on RMSE, is 0.65, which indicates a moderate level of prediction error. This suggests that while the model provides a reasonable starting point, it does not fully capture the variability in the data. For the next year, the model predicts a constant value of 16.191 for each month, which aligns with the naive approach of assuming no change from the most recent observed value. The confidence intervals widen over time, indicating increasing uncertainty, with 80% bounds starting at 15.36 to 17.02 in March 2024 and expanding to 13.31 to 19.08 by February 2025. A key observation is that the naive model's simplicity makes it a useful baseline for comparison, but it does not account for underlying patterns like seasonality or trends, resulting in flat forecasts that may not align with actual future values.
+```{r}
+plot(sales_ts, main = "Time Series with Moving Averages", xlab = "Time", ylab = "Sales", type = "o")
+
+ma3 <- ma(sales_ts, order = 3)
+ma6 <- ma(sales_ts, order = 6)
+ma9 <- ma(sales_ts, order = 9)
+
+lines(ma3, col = "red", lwd = 2)
+lines(ma6, col = "blue", lwd = 2)
+lines(ma9, col = "green", lwd = 2)
+
+legend("topright", legend = c("Original", "MA (3)", "MA (6)", "MA (9)"),
+       col = c("black", "red", "blue", "green"), lty = 1, lwd = 2)
+```
+As the moving average order increases, the plot shows that the series becomes progressively smoother. The MA(3) line (red) follows the original data more closely, capturing short-term fluctuations while still reducing noise. The MA(6) line (blue) further smooths out the variations, emphasizing the underlying trend while diminishing smaller fluctuations. Finally, the MA(9) line (green) appears the smoothest, focusing almost entirely on the overall trend while ignoring most short-term changes.
+
+This progression illustrates how higher-order moving averages prioritize long-term trends over short-term volatility, making them more suitable for identifying underlying patterns but less effective at responding to recent changes or seasonality in the data. However, this smoothing comes at the cost of losing finer details, which might be critical for short-term forecasting or understanding seasonal dynamics.
+```{r}
+ets_model <- ets(sales_ts)
+
+print(summary(ets_model))
+
+ets_forecast <- forecast(ets_model, h = 12)
+
+plot(ets_forecast, main = "Simple Smoothing Forecast (ETS)", xlab = "Time", ylab = "Sales")
+
+print(ets_forecast)
+
+residuals_ets <- residuals(ets_model)
+plot(residuals_ets, main = "Residuals (ETS Model)", type = "o")
+hist(residuals_ets, main = "Histogram of Residuals (ETS Model)")
+plot(fitted(ets_model), residuals_ets, main = "Fitted Values vs Residuals (ETS)", xlab = "Fitted", ylab = "Residuals")
+acf(residuals_ets, main = "ACF of Residuals (ETS)")
+
+accuracy_ets <- accuracy(ets_forecast)
+print(accuracy_ets)
+```
+The ETS model forecast for the next 12 months uses a simple exponential smoothing approach with additive error. The smoothing parameter, alpha, is 0.5558, indicating moderate weight on recent observations. The initial state of the level component is 14.5659, representing the starting point of the smoothed series. The sigma value, 0.5893, signifies the standard deviation of the residuals, reflecting the model's inherent variability.
+
+Residual analysis reveals valuable insights into the model's performance. The residual plot shows variability around zero, suggesting no significant bias, but there are slight spikes indicating room for improvement in capturing certain patterns. The histogram of residuals highlights a roughly symmetric distribution centered near zero, supporting the assumption of normally distributed errors. The fitted values versus residuals plot does not show a systematic pattern, reinforcing the model's adequacy in capturing the data structure. However, slight clustering indicates some residual dependencies. The actual values versus residuals plot also suggests no significant patterns, and the ACF plot of residuals reveals no significant autocorrelations except for a slight spike at lag 1, which could hint at minor residual dependency.
+
+The RMSE for the ETS model is 0.566215, indicating reasonably accurate forecasts. The forecasted value for each of the next 12 months is approximately 16.02361, with the prediction intervals narrowing the focus to a range between approximately 14.43974 and 17.60748 (95% confidence). This consistent forecast suggests that the model expects stable performance without significant seasonal or trend-driven changes in the time series.
+
+Overall, the ETS model performs well in terms of accuracy, as evidenced by the low RMSE. The consistent forecast values reflect the absence of strong trends or seasonality, aligning with the data's structure. The residual analysis reinforces the model's validity, though minor dependencies in residuals suggest opportunities for refinement in future iterations. The forecast provides a reliable projection for the time series, indicating stability in the underlying process.
+```{r}
+hw_model <- HoltWinters(sales_ts)
+plot(hw_model, main = "Holt-Winters Model")
+
+print(paste("Alpha:", hw_model$alpha))
+print(paste("Beta:", hw_model$beta))
+print(paste("Gamma:", hw_model$gamma))
+
+forecast_hw <- forecast(hw_model, h = 12)
+
+plot(forecast_hw, main = "Holt-Winters Forecast", xlab = "Time", ylab = "Sales")
+
+accuracy_hw <- accuracy(forecast_hw)
+print(accuracy_hw)
+
+residuals_hw <- residuals(hw_model)
+plot(residuals_hw, main = "Residuals (Holt-Winters Model)", type = "o")
+hist(residuals_hw, main = "Histogram of Residuals (Holt-Winters Model)")
+plot(fitted(hw_model), residuals_hw, main = "Fitted Values vs Residuals (Holt-Winters)", xlab = "Fitted", ylab = "Residuals")
+acf(residuals_hw, main = "ACF of Residuals (Holt-Winters)")
+print(forecast_hw)
+```
+The alpha is 0.393, indicating the weight given to the most recent observations in updating the level. Beta is 0, meaning no trend adjustment is being applied, and gamma is 0, suggesting that seasonality is not being modeled explicitly. The initial state for the level is 15.87, representing the starting estimate for the time series level, while the trend and seasonality are both effectively 0, further confirming no explicit trend or seasonal component.
+
+The sigma value is 0.804, which represents the standard deviation of the residuals. This gives an indication of the variability or uncertainty in the forecast.
+
+For residual analysis, the residuals plot shows scattered values with no recognizable pattern, indicating that the residuals are reasonably random, a key assumption of the model. The histogram of residuals shows a roughly symmetric distribution centered around zero, which supports the assumption of normality. The plot of fitted values versus residuals shows no systematic pattern, indicating that the residuals are not correlated with the fitted values. The ACF plot of residuals shows most lags within the confidence bounds, implying no significant autocorrelation in the residuals.
+
+The accuracy measures for the model include an RMSE of 0.804, which is the key metric we use for evaluating model performance. This value indicates the average magnitude of the forecast error and suggests that the model performs reasonably well.
+
+The forecast for the next 12 months predicts the time series values to gradually increase, with the point forecast for February 2025 being approximately 18.26. This gradual increase aligns with the observed upward movement in the historical data. The confidence intervals widen as the forecast horizon increases, reflecting greater uncertainty in longer-term predictions.
+
+In summary, the Holt-Winters model provides reasonable accuracy with an RMSE of 0.804. It predicts a steady upward trend in the time series, which aligns with historical observations. However, since the model has no trend or seasonal adjustment as shown by gamma and beta being 0, it is better suited for a dataset with minimal or non-significant trends and seasonality. The residual analysis confirms that the model assumptions are met, suggesting that the forecasts are reliable within the given context.
+```{r}
+adf_test <- adf.test(sales_ts, alternative = "stationary")
+print(adf_test)
+```
+```{r}
+ndiffs_required <- ndiffs(sales_ts)
+print(paste("Number of differences to make stationary:", ndiffs_required))
+```
+```{r}
+sales_ts_diff <- diff(sales_ts, differences = ndiffs_required)
+plot(sales_ts_diff, main = "Differenced Time Series", ylab = "Differenced Sales Units", xlab = "Time")
+
+```
+```{r}
+acf(sales_ts_diff, main = "ACF of Differenced Series")
+pacf(sales_ts_diff, main = "PACF of Differenced Series")
+```
+```{r}
+auto_arima_model <- auto.arima(sales_ts)
+print(summary(auto_arima_model))
+```
+```{r}
+best_model <- auto_arima_model
+```
+```{r}
+plot(residuals(best_model), main = "Residuals", ylab = "Residuals", xlab = "Time")
+hist(residuals(best_model), main = "Histogram of Residuals", xlab = "Residuals")
+plot(fitted(best_model), residuals(best_model), main = "Fitted Values vs. Residuals", xlab = "Fitted Values", ylab = "Residuals")
+plot(sales_ts, residuals(best_model), main = "Actual Values vs. Residuals", xlab = "Actual Values", ylab = "Residuals")
+acf(residuals(best_model), main = "ACF of Residuals")
+pacf(residuals(best_model), main = "PACF of Residuals")
+```
+```{r}
+accuracy_metrics <- accuracy(best_model)
+print(accuracy_metrics)
+```
+
+```{r}
+forecast_1yr <- forecast(best_model, h = 12)
+forecast_2yr <- forecast(best_model, h = 24)
+
+plot(forecast_1yr, main = "1-Year ARIMA Forecast")
+plot(forecast_2yr, main = "2-Year ARIMA Forecast")
+```
+```{r}
+print(forecast_1yr)
+print(forecast_2yr)
+```
+The ARIMA analysis reveals that the time series data is not stationary, as confirmed by the ADF test, which produced a p-value of 0.7823, indicating we cannot reject the null hypothesis of non-stationarity. To make the series stationary, one difference was applied, as suggested by the ndiffs() function. The differenced time series plot shows random fluctuations around zero, confirming it stationary after differencing. No seasonal component is evident in the data based on the differenced series and the ACF/PACF plots. The ACF plot exhibits a significant spike at lag 1 and a rapid drop-off, while the PACF plot shows a significant spike at lag 1 with no further lags. This behavior indicates that ARIMA(0,1,1) is an appropriate model, with ARIMA(1,1,0) being a secondary possibility.
+
+The ARIMA(0,1,1) model was chosen based on its lower AIC (47.7), BIC (50.14), and sigma^2 (0.3474), signifying a better fit than other candidates. The final model formula includes an MA(1) coefficient of -0.4326. Residual analysis confirms the model’s adequacy, with residuals fluctuating randomly around zero in the residual plot and no discernible patterns in the fitted values vs. residuals or actual values vs. residuals plots. The histogram of residuals approximates a normal distribution, and the ACF plot of residuals shows no significant autocorrelations, indicating the model captures dependencies effectively. Five accuracy measures: ME (0.0848), RMSE (0.5663), MAE (0.4260), MPE (0.4473), and MAPE (2.8316)—show the model is reasonably accurate, with a low percentage error.
+
+The one-year forecast predicts stable values ranging around 16.02 to 16.03, with confidence intervals gradually widening. Similarly, the two-year forecast shows consistent predictions of approximately 16.03, with greater uncertainty reflected in the confidence intervals for the second year. Overall, the ARIMA(0,1,1) model is a strong fit for this dataset, accurately capturing trends and providing reliable forecasts for the next one and two years. While the model performs well for this data, its simplicity assumes no seasonality or external factors, which should be considered in future analyses if relevant patterns emerge.
+```{r}
+print("Accuracy Measures for Naïve Model:")
+print(accuracy_naive)
+
+print("Accuracy Measures for ETS Model:")
+print(accuracy_ets)
+
+print("Accuracy Measures for Holt-Winters Model:")
+print(accuracy_hw)
+
+print("Accuracy Measures for ARIMA Model:")
+print(accuracy_metrics)
+```
+Naive Model:
+The naive method assumes that the forecast for the next period is equal to the last observed value. This method is particularly useful for datasets with random walk or highly volatile patterns without trends or seasonality. It is simple to implement and serves as a baseline for evaluating the performance of more complex models.
+
+ETS Model:
+This method decomposes a time series into error, trend, and seasonal components. It optimally selects the appropriate components based on the data. Ideal for data with clear seasonality and trend components, as it adjusts to underlying patterns over time.
+
+Holt-Winters Model:
+A type of exponential smoothing that accounts for both trends and seasonality, using alpha, beta, and gamma for smoothing parameters for level, trend, and seasonality.Effective for time series data with consistent seasonal patterns, allowing for both short-term and long-term forecasting.
+
+ARIMA Model:
+Auto-Regressive Integrated Moving Average is a sophisticated method combining differencing, autoregression, and moving average components to model the data's structure. Excellent for non-seasonal data with trends or patterns that require differencing to achieve stationary, and it adjusts for lags and dependencies in the data.
+
+Best and Worst Forecast Methods Based on Each Accuracy Measures:
+
+ME:
+Best: Holt-Winters Model (0.0053)
+Worst: ETS Model (0.1009)
+Holt-Winters has the smallest average error, making it reliable for unbiased forecasts.
+
+RMSE*:
+Best: ETS Model (0.5662)
+Worst: Naive Model (0.6499)
+ETS outperforms others in minimizing error magnitude, making it the best for predicting future values.
+
+MAE:
+Best: ARIMA Model (0.4260)
+Worst: Holt-Winters Model (0.5857)
+ARIMA’s low MAE reflects its strong ability to predict accurate values with minimal average deviation.
+
+MPE:
+Best: Holt-Winters Model (0.0041)
+Worst: ETS Model (0.5554)
+Holt-Winters demonstrates minimal percentage bias, suitable for unbiased forecasting.
+
+MAPE:
+Best: ARIMA Model (2.8316)
+Worst: Naive Model (3.4114)
+ARIMA provides forecasts with the lowest relative percentage errors, making it highly reliable.
+
+MASE:
+Best: ARIMA Model (0.2677)
+Worst: Holt-Winters Model (0.3679)
+ARIMA’s scaled errors are the lowest, highlighting its efficiency relative to naive benchmarks.
+
+Conclusion:
+
+The time series analysis indicates a consistent upward trend over the observed period, with periodic fluctuations suggesting underlying seasonality. The forecasts predict that the time series value will increase gradually over the next year, continuing the trend observed in the historical data. Over the next two years, the value is expected to maintain this increasing pattern, albeit with greater uncertainty as reflected in the widening forecast intervals.
+
+The ranking of forecasting methods for this time series is:
+
+1. ETS Model – Demonstrated the highest accuracy, with the lowest RMSE, effectively capturing both trend and seasonal components.
+
+2. ARIMA Model – Performed well with a low RMSE, making it a reliable option for capturing trends, though less effective than ETS in addressing seasonality.
+
+3. Holt-Winters Model – Provided reasonable accuracy but had a slightly higher RMSE compared to ETS and ARIMA, possibly due to limitations in capturing complex patterns.
+
+4. Naive Model – The least accurate method, with higher error measures, serving only as a simple baseline.
+
+In summary, the time series is on a moderate growth trajectory, and the ETS model is the most effective method for forecasting this data, followed closely by ARIMA. These models provide reliable insights for anticipating future trends.
